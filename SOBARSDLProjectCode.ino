@@ -11,58 +11,70 @@
   and added ADC Protection in circuit Redesign
 
   This is a full rewrite of the original code there will be similarities in H/W and Library’s 
- 
 */
+
 // Library Includes
-#include <Wire.h>             // Standard IDE library file
+#include <Wire.h>             // Standard IDE library file for I2C and SPI
 #include <Adafruit_GFX.h>     // https://github.com/adafruit/Adafruit-GFX-Library
 #include <Adafruit_SSD1306.h> // https://github.com/adafruit/Adafruit_SSD1306
 
+// Defines
+#define DEBUG                       // Uncomment to calibrate and debug enaples serial output USB Port
+
 // Your Modifications Here
 // Constants used in caculations Modify to meet your hardware requirements
-#define LOADOHMS 50.0  // your 50 ohm loads actual resistance fo caculations
-#define NOMBATTERYVOLTAGE 3.0   // Typical Battery Voltage 3.0, 4.2, 9.0 etc 
-#define BATTERYLOW 2.5   // Typical Battery Low Voltage for aleart 
+#define LOADOHMS 50.1         // your 50 ohm loads actual resistance for caculations
+#define NOMBATTERYVOLTAGE 9.0 // Typical Battery Voltage 3.0, 4.2, 9.0 etc
+#define BATTERYLOW 7.5        // Typical Battery Low Voltage for aleart
 
 // Correction Factors for Voltage Divider,  Modify to meet your hardware requirements
-#define CALIBRATIONHIGH 0.008704 // High Range Calibration 
-#define CALIBRATIONLOW 0.008704 // Low Range Calibration
-#define CALIBRATIONBATT 0.02  // Battery reading Calibration
+//Starting point ( adc hi / steps ) * ( volt div hi / adc hi)
+// Example ( 5/1024)*(36/5)= 0.035190616  Starting point adjust using real values VIA DENUG Serial Port
+//
+#define CALIBRATIONHIGH 0.102040816 // High Range Volts per ADC step
+#define CALIBRATIONLOW  0.039682539  // Low Range Volts per ADC step
+#define CALIBRATIONBATT 0.021418439 // Battery reading Volts per ADC step
 
 // Splash Screen Strings
-#define LINE1 "   SOBARS "  // 16 Char 4 Lines
-#define LINE2 "Dummy load"
-#define LINE3 "Spring Build"
-#define LINE4 "   2019"
+#define LINE1 "       SOBARS " // 16 Char 4 Lines
+#define LINE2 "     Dummy load"
+#define LINE3 "    Spring Build"
+#define LINE4 "        2019"
 
-// END Your Modifications
-
+// END Your Modifications Mods Below this point require a good understanding of HW and SW
 
 // Other Constants
-#define DIODEVOLTAGEDROP 0.7       // Voltage drop for diode  typ 0.5 or 0.7
-#define ADCLOOPCNT 16  // Number of readings per sample must be less than 64
+
+#define DIODEVOLTAGEDROP 0.7 // Voltage drop for diode  typ 0.5 or 0.7 not likly to use
+#define ADCLOOPCNT 8         // Number of readings per sample must be less than 64
 
 // Hardware Defines:
 
-// ADC channels 
-#define BATTERYVOLT A0 
-#define LOADLOW A1 
+#define OLED_RESET 4
+
+// ADC channels
+#define BATTERYVOLT A0
+#define LOADLOW A1
 #define LOADHI A2
+#define ITERATIONS 8 // old
+//#define SENSORPIN A1 // old
 
 // MODE Button
-#define MODESW A7  // A7  or  19  it is ANALOG ONLY 
+#define MODESW A7 // A7  or  22  it is ANALOG ONLY
+//#define MODESW        D13
 
 // Global Variables
-int BatteryADC;  // Raw ADC value 0-1023
-int LowRangeADC;  // Raw ADC value 0-1023
-int HighRangeADC;  // Raw ADC value 0-1023
-int ModeButtonADC;  // Raw ADC value 0-1023
-float DisplayWatts; // value to pass to the Display
+int BatteryADC = 0;    // Raw ADC value 0-1023
+int LowRangeADC = 0;   // Raw ADC value 0-1023
+int HighRangeADC = 0;  // Raw ADC value 0-1023
+int ModeButtonADC = 0; // Raw ADC value 0-1023  digital
+int RangeHI = 0;       // For Auto Range if 0 Low 0-25 if 1 0-150 range
+
+float DisplayWatts = 0.0; // value to pass to the Display
 
 ////////////////////////////////////////////////////////////////////////////////
-//#define OLED_RESET 4
 
-//#define DEBUG                       // Uncomment to calibrate and debug
+
 
 Adafruit_SSD1306 display(OLED_RESET);
 
@@ -88,78 +100,18 @@ void setup()
 
 Value = analogRead(PIN DEF); // Input analog pins
 
-
+analogReference(INTERNAL);
 
 
 */
 
-float ReadADC(int channel)
-{
-  long temp = 0;
-  analogRead(channel);
-  delay(10); // ADC Settling throw away first reading
-
-  for(int i=ADCLOOPCNT;i;i--)
-  { 
-    temp+=analogRead(channel);
-    delay(10);
-  }
-  return(temp/ITERATIONS)
-}
-
-// Read all channels and Update Global Variables
-void UpdateAllADC()
-{
-    
-    BatteryADC = ReadADC(BATTERYVOLT);
-    LowRangeADC = ReadADC(LOADLOW);
-    HighRangeADC = ReadADC(HighRangeADC);
-    ModeButtonADC = ReadADC(MODESW);
-
-}
-
-
-/*****
-  Purpose: A simple splash sceen to show who developed the DL. Feel free to
-           change to whatever your want.\, but comment out the old code and
-           replace with your code.
-           
-  Parameter list:
-    void
-    
-  Return value:
-    void
-    
-*****/
-void Splash()
-{
-  display.clearDisplay(); // Clear the graphics display buffer.
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setCursor(0, 0);
-  display.println(" GCBG DUMMY LOAD");
-  display.println("       by");
-  display.println(" Al Peter, AC8GY");
-  display.println("Jack Purdum, W8TEE");
-  display.display();
-  /*  If you want to use your name and call on the splash
-      screen, comment out the above (don't remove it) and
-      replace with something like this:
-  display.setCursor(0, 1);
-  display.println(" GCBG DUMMY LOAD");
-  display.println("    built by");
-  display.println("Steve Ford, W1AW");
-  display.display();
-   */
-}
-
 void setup()
 {
 #ifdef DEBUG
-  
+ Serial.begin(9600);
 #endif
-Serial.begin(9600);
-// pinMode(MODESW, INPUT);  // its analog goof 
+ 
+  // pinMode(MODESW, INPUT);  // its analog goof
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // initialize with the I2C addr 0x3C (for the 128x32).
                                              // Your OLED might use a different frequency. Google
@@ -168,35 +120,130 @@ Serial.begin(9600);
 
   Splash();
 
-#ifdef DEBUG // Probably only need to call once to tweak things. Uncomment DEBUG line above
-  Calibrate();
-#endif
+
   delay(4000);
   display.clearDisplay(); // Clear the graphics display buffer.
+}
+
+float ReadADC(int channel)
+{
+  long temp = 0;
+  analogRead(channel);
+  delay(10); // ADC Settling throw away first reading
+
+  for (int i = ADCLOOPCNT; i; i--)
+  {
+    temp += analogRead(channel);
+    //delay(5);
+  }
+
+  return (temp / ADCLOOPCNT);
+}
+
+// Read all channels and Update Global Variables
+void UpdateAllADC()
+{
+
+  BatteryADC = ReadADC(BATTERYVOLT);
+
+  LowRangeADC = ReadADC(LOADLOW);
+  if (LowRangeADC > 400)
+    RangeHI = 1;
+  else
+    RangeHI = 0;
+
+  HighRangeADC = ReadADC(LOADHI);
+  
+ ModeButtonADC = ReadADC(MODESW);
+ 
+//  if (ModeButtonADC < 100)
+//    RangeHI = 1;
+//  else
+ //   RangeHI = 0;
+}
+
+// Displays Start up screen as defined above in definition section  (LINE 1-4)
+void Splash()
+{
+  display.clearDisplay(); // Clear the graphics display buffer.
+  display.setTextSize(1); //Set Small Font
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.println(LINE1);
+  display.println(LINE2);
+  display.println(LINE3);
+  display.println(LINE4);
+  display.display();
+}
+
+void TestXtalk()
+{
+  Serial.print("A0 A1 A2 A7:  Batt: ");
+  Serial.print(analogRead(A0));
+  Serial.print(",    Low: ");
+  Serial.print(analogRead(A1));
+  Serial.print(",    High: ");
+  Serial.print(analogRead(A2));
+  Serial.print(",    Mode: ");
+  Serial.print(analogRead(A7));
+  Serial.println("    EOL");
+}
+
+void TestCal()
+{
+  Serial.print("A0 A1 A2 A7: Batt: ");
+  Serial.print(BatteryADC);
+  Serial.print(" ");
+  Serial.print((BatteryADC * CALIBRATIONBATT), 3);
+  Serial.print(" VDC,   Low: ");
+  Serial.print(LowRangeADC);
+  Serial.print(" ");
+  Serial.print((LowRangeADC * CALIBRATIONLOW ),3);
+  Serial.print(" VDC,   High: ");
+  Serial.print(HighRangeADC);
+  Serial.print(" ");
+  Serial.print((HighRangeADC * CALIBRATIONHIGH ),3);
+  Serial.print(" VDC,   Mode: ");
+  Serial.print(ModeButtonADC);
+  Serial.println(" EOL");
+  delay(50);
 }
 
 void loop()
 {
   char buff[10];
+  char buff2[10];
   char pad[] = "       "; // 7 spaces
   int where;
-  int i;
+  // int i;
   float sum;
   float watts;
 
   sum = 0.0;
-  i = 0;
-  while (i < ITERATIONS)
-  {
-    sensorValue = analogRead(SENSORPIN); // Input from voltage divider
-    delay(10);                           // Let pin settle
-    watts = CalculateWatts(sensorValue);
-    sum += watts;
-    i++;
-  }
-  sum /= ITERATIONS;
 
-  dtostrf(sum, 4, 2, buff);
+
+#ifdef DEBUG   // Only show if DEBUG mode set
+  //TestXtalk(); // raw sensor
+  TestCal();   // VDC with Cal Values
+#endif
+  //Watts = ReadWatts(); // Function  Reads the 2 ADC Channels sets Hi or Lo range and returns Caculated Watts
+ 
+  
+  UpdateAllADC();
+  sum = BatteryADC * CALIBRATIONBATT;
+
+  if(RangeHI)
+  {
+    watts = (((HighRangeADC * CALIBRATIONHIGH)*(HighRangeADC * CALIBRATIONHIGH)) / LOADOHMS);
+    dtostrf((watts), 6, 1, buff); // Display XXX.X
+  }
+  else
+  {
+    watts = ((LowRangeADC * CALIBRATIONLOW)*(LowRangeADC * CALIBRATIONLOW) / LOADOHMS);
+    dtostrf((watts), 6, 2, buff); // Display XX.XX
+  }
+
+  dtostrf(sum, 4, 1, buff2);
 
   where = strlen(buff);
   strcpy(&pad[6 - where], buff);
@@ -204,67 +251,18 @@ void loop()
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println("      WATTS IN");
-  display.setTextSize(3);
+  display.print("WATTS     Batt:");
+  display.println(buff2);
+
+  display.setTextSize(3); //Large Font
   where = (6 - where) * 10;
   display.setCursor(where, 10);
   display.println(buff);
-  display.display();
-  delay(1000);
+
+  //display.setTextSize(1);
+  //display.setCursor(102, 24);
+ // display.println(buff2);
+ display.display();
+  //delay(10);
 }
 
-/*****
-  Purpose: To convert the value read from the DL and convert it to watts
-
-  Parameter list:
-    int sensorValue       the value read on the analog input pin
-
-  Return value:
-    float               the calculated watts
-*****/
-float CalculateWatts(int sensorValue)
-{
-  float temp;
-
-  temp = sensorValue + DIODEVOLTAGEDROP; // add back diode voltage drop
-  temp = sensorValue;
-  temp *= temp;            // Square for power
-  temp /= MYDUMMYLOADOHMS; // Replace with your measured resistance
-
-  return temp * CALIBRATIONOFFSET;
-}
-
-/*****
-  Purpose: To figure out calibration constant, See book for details.
-
-  Parameter list:
-    void
-
-  Return value:
-    void
-*****/
-
-void Calibrate()
-{
-  int i = ITERATIONS; // We're going to get a series of readings
-
-  while (i--)
-  {
-    sensorValue = analogRead(SENSORPIN);
-    delay(100); // Settle between readings...
-    if (sensorValue > sensorMax)
-    { // record the maximum sensor value
-      sensorMax = sensorValue;
-    }
-    if (sensorValue < sensorMin)
-    { // record the minimum sensor value
-      sensorMin = sensorValue;
-    }
-  }
-#ifdef DEBUG // Only show if DEBUG mode set
-  Serial.print("sensorValue = ");
-  Serial.print(sensorValue);
-  Serial.print("   sensorMin = ");
-  Serial.println(sensorMin);
-#endif
-}
